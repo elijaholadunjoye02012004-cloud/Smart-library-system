@@ -1,0 +1,28 @@
+#include <iostream>
+#include <string>
+
+int main() {
+    std::cout << "Smart Library Management System (SLMS)\n";
+
+    while (true) {
+        std::string username;
+        std::cout << "\nUsername (or 'exit'): ";
+        std::getline(std::cin, username);
+
+        if (username == "exit")
+            break;
+
+        std::string password;
+        std::cout << "Password: ";
+        std::getline(std::cin, password);
+
+        if (username == "admin" && password == "admin") {
+            std::cout << "Login successful.\n";
+        } else {
+            std::cout << "Invalid credentials.\n";
+        }
+    }
+
+    std::cout << "Goodbye.\n";
+    return 0;
+}
