@@ -1,28 +1,30 @@
 #include <iostream>
 #include <string>
+#include <vector>
 
-int main() {
-    std::cout << "Smart Library Management System (SLMS)\n";
+enum class BookStatus { AVAILABLE, BORROWED };
 
-    while (true) {
-        std::string username;
-        std::cout << "\nUsername (or 'exit'): ";
-        std::getline(std::cin, username);
+class Book {
+public:
+    Book(std::string id, std::string title, std::string author)
+        : id(id), title(title), author(author), status(BookStatus::AVAILABLE) {}
 
-        if (username == "exit")
-            break;
-
-        std::string password;
-        std::cout << "Password: ";
-        std::getline(std::cin, password);
-
-        if (username == "admin" && password == "admin") {
-            std::cout << "Login successful.\n";
-        } else {
-            std::cout << "Invalid credentials.\n";
-        }
+    std::string toString() const {
+        return id + " | " + title + " | " + author;
     }
 
-    std::cout << "Goodbye.\n";
-    return 0;
+private:
+    std::string id;
+    std::string title;
+    std::string author;
+    BookStatus status;
+};
+
+int main() {
+    std::vector<Book> books;
+    books.emplace_back("B001", "Clean Code", "Robert Martin");
+
+    std::cout << "Books:\n";
+    for (const auto& b : books)
+        std::cout << b.toString() << "\n";
 }
