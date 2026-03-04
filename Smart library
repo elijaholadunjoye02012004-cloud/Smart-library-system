@@ -1,17 +1,19 @@
 #include <iostream>
 #include <string>
-#include <vector>
+#include <chrono>
+#include <memory>  
 
-enum class BookStatus { AVAILABLE, BORROWED };
+enum class BookStatus { AVAILABLE, BORROWED, RESERVED };
 
 class Book {
 public:
     Book(std::string id, std::string title, std::string author)
-        : id(id), title(title), author(author), status(BookStatus::AVAILABLE) {}
+        : id(id), title(title), author(author),
+          status(BookStatus::AVAILABLE) {}
 
-    std::string toString() const {
-        return id + " | " + title + " | " + author;
-    }
+    std::string getId() const { return id; }
+    std::string getTitle() const { return title; }
+    BookStatus getStatus() const { return status; }
 
 private:
     std::string id;
@@ -21,10 +23,27 @@ private:
 };
 
 int main() {
-    std::vector<Book> books;
-    books.emplace_back("B001", "Clean Code", "Robert Martin");
-
-    std::cout << "Books:\n";
-    for (const auto& b : books)
-        std::cout << b.toString() << "\n";
+    std::cout << "Smart Library Management System\n";
 }
+
+class Date {
+public:
+    Date() : tp(std::chrono::system_clock::now()) {}
+
+    explicit Date(std::chrono::system_clock::time_point time)
+        : tp(time) {}
+
+    Date addDays(int days) const {
+        return Date(tp + std::chrono::hours(24 * days));
+    }
+
+private:
+    std::chrono::system_clock::time_point tp;
+};
+
+// Loan Structure
+struct Loan {
+    std::shared_ptr<Book> book;
+    Date borrowedDate;
+    Date dueDate;
+};
