@@ -2,9 +2,27 @@
 #include <string>
 #include <chrono>
 #include <memory>  
+#include <vector>
 
+// User authentication class
+class User {
+public:
+    User(std::string username, std::string password)
+        : username(username), password(password) {}
+
+    bool authenticate(const std::string& u, const std::string& p) const {
+        return u == username && p == password;
+    }
+
+private:
+    std::string username;
+    std::string password;
+};
+
+// Book status enumeration
 enum class BookStatus { AVAILABLE, BORROWED, RESERVED };
 
+// Book class
 class Book {
 public:
     Book(std::string id, std::string title, std::string author)
@@ -22,10 +40,7 @@ private:
     BookStatus status;
 };
 
-int main() {
-    std::cout << "Smart Library Management System\n";
-}
-
+// Date class for handling dates
 class Date {
 public:
     Date() : tp(std::chrono::system_clock::now()) {}
@@ -41,9 +56,31 @@ private:
     std::chrono::system_clock::time_point tp;
 };
 
-// Loan Structure
+// Loan structure
 struct Loan {
     std::shared_ptr<Book> book;
     Date borrowedDate;
     Date dueDate;
 };
+
+// Main program
+int main() {
+    // User authentication demo
+    User admin("admin", "admin");
+
+    std::string username, password;
+    std::cout << "Username: ";
+    std::getline(std::cin, username);
+    std::cout << "Password: ";
+    std::getline(std::cin, password);
+
+    if (admin.authenticate(username, password))
+        std::cout << "Login successful.\n";
+    else
+        std::cout << "Invalid credentials.\n";
+
+    // Library management demo
+    std::cout << "\nSmart Library Management System\n";
+
+    return 0;
+}
