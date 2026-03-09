@@ -19,25 +19,18 @@ private:
     std::string password;
 };
 
-// Book status enumeration
-enum class BookStatus { AVAILABLE, BORROWED, RESERVED };
-
 // Book class
 class Book {
 public:
-    Book(std::string id, std::string title, std::string author)
-        : id(id), title(title), author(author),
-          status(BookStatus::AVAILABLE) {}
+    Book(std::string id, std::string title)
+        : id(id), title(title) {}
 
     std::string getId() const { return id; }
     std::string getTitle() const { return title; }
-    BookStatus getStatus() const { return status; }
 
 private:
     std::string id;
     std::string title;
-    std::string author;
-    BookStatus status;
 };
 
 // Date class for handling dates
@@ -56,11 +49,20 @@ private:
     std::chrono::system_clock::time_point tp;
 };
 
-// Loan structure
-struct Loan {
-    std::shared_ptr<Book> book;
-    Date borrowedDate;
-    Date dueDate;
+// Library Catalog class for managing books
+class LibraryCatalog {
+public:
+    void addBook(const Book& book) {
+        books.push_back(book);
+    }
+
+    void listBooks() const {
+        for (const auto& b : books)
+            std::cout << b.getId() << " | " << b.getTitle() << "\n";
+    }
+
+private:
+    std::vector<Book> books;
 };
 
 // Main program
@@ -81,6 +83,11 @@ int main() {
 
     // Library management demo
     std::cout << "\nSmart Library Management System\n";
+    LibraryCatalog catalog;
+    catalog.addBook(Book("B001", "Clean Code"));
+    catalog.addBook(Book("B002", "Design Patterns"));
+    std::cout << "Books in catalog:\n";
+    catalog.listBooks();
 
     return 0;
 }
