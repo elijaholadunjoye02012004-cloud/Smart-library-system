@@ -1,8 +1,23 @@
 #include <iostream>
 #include <string>
 #include <chrono>
-#include <memory>  
 #include <vector>
+
+
+// Date class for handling dates
+class Date {
+public:
+    Date() : tp(std::chrono::system_clock::now()) {}
+
+    Date addDays(int days) const {
+        return Date(tp + std::chrono::hours(24 * days));
+    }
+
+private:
+    std::chrono::system_clock::time_point tp;
+    Date(std::chrono::system_clock::time_point t) : tp(t) {}
+};
+
 
 // User authentication class
 class User {
@@ -19,11 +34,15 @@ private:
     std::string password;
 };
 
+
 // Book class
 class Book {
 public:
     Book(std::string id, std::string title)
-        : id(id), title(title) {}
+        : id(id), title(title), borrowed(false) {}
+
+    void borrow() { borrowed = true; }
+    bool isBorrowed() const { return borrowed; }
 
     std::string getId() const { return id; }
     std::string getTitle() const { return title; }
@@ -31,22 +50,7 @@ public:
 private:
     std::string id;
     std::string title;
-};
-
-// Date class for handling dates
-class Date {
-public:
-    Date() : tp(std::chrono::system_clock::now()) {}
-
-    explicit Date(std::chrono::system_clock::time_point time)
-        : tp(time) {}
-
-    Date addDays(int days) const {
-        return Date(tp + std::chrono::hours(24 * days));
-    }
-
-private:
-    std::chrono::system_clock::time_point tp;
+    bool borrowed;
 };
 
 // Library Catalog class for managing books
@@ -65,9 +69,12 @@ private:
     std::vector<Book> books;
 };
 
-// Main program
+// main program
 int main() {
-    // User authentication demo
+    std::cout << "=== Smart Library Management System ===\n\n";
+
+    // Step 1: User Authentication
+    std::cout << "--- User Authentication ---\n";
     User admin("admin", "admin");
 
     std::string username, password;
@@ -76,18 +83,25 @@ int main() {
     std::cout << "Password: ";
     std::getline(std::cin, password);
 
-    if (admin.authenticate(username, password))
-        std::cout << "Login successful.\n";
-    else
+    if (!admin.authenticate(username, password)) {
         std::cout << "Invalid credentials.\n";
+        return 1;
+    }
+    std::cout << "Login successful.\n\n";
 
-    // Library management demo
-    std::cout << "\nSmart Library Management System\n";
-    LibraryCatalog catalog;
-    catalog.addBook(Book("B001", "Clean Code"));
-    catalog.addBook(Book("B002", "Design Patterns"));
-    std::cout << "Books in catalog:\n";
-    catalog.listBooks();
+    // Step 2: Book Borrowing
+    std::cout << "--- Book Borrowing ---\n";
+    Book book("B001", "Clean Code");
+    if (!book.isBorrowed()) {
+        book.borrow();
+        std::cout << "Book '" << book.getTitle() << "' borrowed successfully.\n\n";
+    }
+
+    // Step 3: Loan Date Management
+    std::cout << "--- Loan Date ---\n";
+    Date today;
+    Date due = today.addDays(14);
+    std::cout << "Loan created with 14-day due date.\n";
 
     return 0;
 }
