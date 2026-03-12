@@ -2,12 +2,18 @@
 #include <string>
 #include <chrono>
 #include <vector>
+#include <ctime>
+
+// ============================================
+// ROLES
+// ============================================
+
+enum class Role { MEMBER, LIBRARIAN };
 
 // ============================================
 // UTILITY CLASSES
 // ============================================
 
-// Date class for handling dates
 class Date {
 public:
     Date() : tp(std::chrono::system_clock::now()) {}
@@ -16,35 +22,43 @@ public:
         return Date(tp + std::chrono::hours(24 * days));
     }
 
+    void print() const {
+        std::time_t t = std::chrono::system_clock::to_time_t(tp);
+        std::cout << std::ctime(&t);
+    }
+
 private:
     std::chrono::system_clock::time_point tp;
+
     Date(std::chrono::system_clock::time_point t) : tp(t) {}
 };
 
 // ============================================
-// AUTHENTICATION
+// USER AUTHENTICATION
 // ============================================
 
-// User authentication class
 class User {
 public:
-    User(std::string username, std::string password)
-        : username(username), password(password) {}
+    User(std::string username, std::string password, Role role)
+        : username(username), password(password), role(role) {}
 
     bool authenticate(const std::string& u, const std::string& p) const {
         return u == username && p == password;
     }
 
+    Role getRole() const {
+        return role;
+    }
+
+    std::string getUsername() const {
+        return username;
+    }
+
 private:
     std::string username;
     std::string password;
+    Role role;
 };
-
-// ============================================
-// ROLES & PERMISSIONS
-// ============================================
-
-enum class Role { MEMBER, LIBRARIAN };
 
 // ============================================
 // LIBRARY RULES
@@ -60,23 +74,39 @@ public:
 // LIBRARY COMPONENTS
 // ============================================
 
-// Reservation structure
 struct Reservation {
     std::string bookId;
     std::string username;
 };
 
-// Book class
 class Book {
 public:
     Book(std::string id, std::string title)
         : id(id), title(title), borrowed(false) {}
 
-    void borrow() { borrowed = true; }
-    bool isBorrowed() const { return borrowed; }
+    bool borrow() {
+        if (borrowed)
+            return false;
 
-    std::string getId() const { return id; }
-    std::string getTitle() const { return title; }
+        borrowed = true;
+        return true;
+    }
+
+    void returnBook() {
+        borrowed = false;
+    }
+
+    bool isBorrowed() const {
+        return borrowed;
+    }
+
+    std::string getId() const {
+        return id;
+    }
+
+    std::string getTitle() const {
+        return title;
+    }
 
 private:
     std::string id;
@@ -84,7 +114,6 @@ private:
     bool borrowed;
 };
 
-// Library Catalog class for managing books
 class LibraryCatalog {
 public:
     void addBook(const Book& book) {
@@ -100,7 +129,6 @@ private:
     std::vector<Book> books;
 };
 
-// Reservations Manager
 class ReservationManager {
 public:
     void addReservation(const Reservation& reservation) {
@@ -109,7 +137,7 @@ public:
 
     void listReservations() const {
         for (const auto& r : reservations)
-            std::cout << "  Book: " << r.bookId << " | User: " << r.username << "\n";
+            std::cout << "Book: " << r.bookId << " | User: " << r.username << "\n";
     }
 
 private:
@@ -121,59 +149,129 @@ private:
 // ============================================
 
 int main() {
+
     std::cout << "=== Smart Library Management System ===\n\n";
 
-    // Step 1: User Authentication
-    std::cout << "--- User Authentication ---\n";
-    User admin("admin", "admin");
+    // ============================================
+    // USER LIST
+    // ============================================
+
+    std::vector<User> users = {
+        User("admin", "admin123", Role::LIBRARIAN),
+        User("librarian", "lib123", Role::LIBRARIAN),
+        User("member", "mem123", Role::MEMBER)
+    };
+
+    // ============================================
+    // LOGIN
+    // ============================================
 
     std::string username, password;
+
+    std::cout << "--- User Authentication ---\n";
+
     std::cout << "Username: ";
     std::getline(std::cin, username);
+
     std::cout << "Password: ";
     std::getline(std::cin, password);
 
-    if (!admin.authenticate(username, password)) {
+    User* loggedUser = nullptr;
+
+    for (auto& user : users) {
+        if (user.authenticate(username, password)) {
+            loggedUser = &user;
+            break;
+        }
+    }
+
+    if (!loggedUser) {
         std::cout << "Invalid credentials.\n";
         return 1;
     }
-    std::cout << "Login successful.\n\n";
 
-    // Step 2: Book Borrowing
-    std::cout << "--- Book Borrowing ---\n";
-    Book book("B001", "Clean Code");
-    if (!book.isBorrowed()) {
-        book.borrow();
-        std::cout << "Book '" << book.getTitle() << "' borrowed successfully.\n\n";
+    std::cout << "Login successful. Welcome " << loggedUser->getUsername() << "\n\n";
+
+    // ============================================
+    // USER ROLE MENU
+    // ============================================
+
+    std::cout << "--- User Role ---\n";
+
+    if (loggedUser->getRole() == Role::LIBRARIAN) {
+
+        std::cout << "Librarian/Admin Menu\n";
+        std::cout << "1. Add Book\n";
+        std::cout << "2. View Reservations\n";
+        std::cout << "3. Manage Catalog\n";
+
+    }
+    else {
+
+        std::cout << "Member Menu\n";
+        std::cout << "1. Borrow Book\n";
+        std::cout << "2. Reserve Book\n";
+        std::cout << "3. View Borrowed Books\n";
+
     }
 
-    // Step 3: Loan Date Management
+    std::cout << "\n";
+
+    // ============================================
+    // BOOK BORROWING DEMO
+    // ============================================
+
+    std::cout << "--- Book Borrowing ---\n";
+
+    Book book("B001", "Clean Code");
+
+    if (book.borrow()) {
+        std::cout << "Book '" << book.getTitle() << "' borrowed successfully.\n";
+    } else {
+        std::cout << "Book already borrowed.\n";
+    }
+
+    std::cout << "\n";
+
+    // ============================================
+    // LOAN DATE DEMO
+    // ============================================
+
     std::cout << "--- Loan Date ---\n";
+
     Date today;
     Date due = today.addDays(14);
-    std::cout << "Loan created with 14-day due date.\n\n";
 
-    // Step 4: Book Reservations
+    std::cout << "Due date: ";
+    due.print();
+
+    std::cout << "\n";
+
+    // ============================================
+    // RESERVATION DEMO
+    // ============================================
+
     std::cout << "--- Book Reservations ---\n";
+
     ReservationManager reservationMgr;
+
     reservationMgr.addReservation({"B001", "alice"});
     reservationMgr.addReservation({"B002", "bob"});
+
     std::cout << "Active Reservations:\n";
+
     reservationMgr.listReservations();
+
     std::cout << "\n";
 
-    // Step 5: User Roles 
-    std::cout << "--- User Roles ---\n";
-    Role userRole = Role::MEMBER;
-    if (userRole == Role::MEMBER)
-        std::cout << "Member Menu\n";
-    else
-        std::cout << "Librarian Menu\n";
-    std::cout << "\n";
+    // ============================================
+    // LIBRARY RULES
+    // ============================================
 
-    // Step 6: Library Rules 
     std::cout << "--- Library Rules ---\n";
+
     LibraryRules rules;
+
     std::cout << "Borrow limit: " << rules.borrowLimit << "\n";
     std::cout << "Loan days: " << rules.loanDays << "\n";
 
