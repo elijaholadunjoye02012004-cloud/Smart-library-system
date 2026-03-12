@@ -3,6 +3,9 @@
 #include <chrono>
 #include <vector>
 
+// ============================================
+// UTILITY CLASSES
+// ============================================
 
 // Date class for handling dates
 class Date {
@@ -18,6 +21,9 @@ private:
     Date(std::chrono::system_clock::time_point t) : tp(t) {}
 };
 
+// ============================================
+// AUTHENTICATION
+// ============================================
 
 // User authentication class
 class User {
@@ -34,6 +40,31 @@ private:
     std::string password;
 };
 
+// ============================================
+// ROLES & PERMISSIONS
+// ============================================
+
+enum class Role { MEMBER, LIBRARIAN };
+
+// ============================================
+// LIBRARY RULES
+// ============================================
+
+class LibraryRules {
+public:
+    int borrowLimit = 5;
+    int loanDays = 14;
+};
+
+// ============================================
+// LIBRARY COMPONENTS
+// ============================================
+
+// Reservation structure
+struct Reservation {
+    std::string bookId;
+    std::string username;
+};
 
 // Book class
 class Book {
@@ -69,7 +100,26 @@ private:
     std::vector<Book> books;
 };
 
-// main program
+// Reservations Manager
+class ReservationManager {
+public:
+    void addReservation(const Reservation& reservation) {
+        reservations.push_back(reservation);
+    }
+
+    void listReservations() const {
+        for (const auto& r : reservations)
+            std::cout << "  Book: " << r.bookId << " | User: " << r.username << "\n";
+    }
+
+private:
+    std::vector<Reservation> reservations;
+};
+
+// ============================================
+// MAIN PROGRAM
+// ============================================
+
 int main() {
     std::cout << "=== Smart Library Management System ===\n\n";
 
@@ -101,7 +151,31 @@ int main() {
     std::cout << "--- Loan Date ---\n";
     Date today;
     Date due = today.addDays(14);
-    std::cout << "Loan created with 14-day due date.\n";
+    std::cout << "Loan created with 14-day due date.\n\n";
+
+    // Step 4: Book Reservations
+    std::cout << "--- Book Reservations ---\n";
+    ReservationManager reservationMgr;
+    reservationMgr.addReservation({"B001", "alice"});
+    reservationMgr.addReservation({"B002", "bob"});
+    std::cout << "Active Reservations:\n";
+    reservationMgr.listReservations();
+    std::cout << "\n";
+
+    // Step 5: User Roles 
+    std::cout << "--- User Roles ---\n";
+    Role userRole = Role::MEMBER;
+    if (userRole == Role::MEMBER)
+        std::cout << "Member Menu\n";
+    else
+        std::cout << "Librarian Menu\n";
+    std::cout << "\n";
+
+    // Step 6: Library Rules 
+    std::cout << "--- Library Rules ---\n";
+    LibraryRules rules;
+    std::cout << "Borrow limit: " << rules.borrowLimit << "\n";
+    std::cout << "Loan days: " << rules.loanDays << "\n";
 
     return 0;
 }
