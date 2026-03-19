@@ -1,279 +1,871 @@
-#include <iostream>
-#include <string>
+#include <algorithm>
 #include <chrono>
+#include <iomanip>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <sstream>
+#include <string>
 #include <vector>
-#include <ctime>
-
-// ============================================
-// ROLES
-// ============================================
-
-enum class Role { MEMBER, LIBRARIAN };
-
-// ============================================
-// UTILITY CLASSES
-// ============================================
 
 class Date {
 public:
     Date() : tp(std::chrono::system_clock::now()) {}
+    explicit Date(std::chrono::system_clock::time_point t) : tp(t) {}
+
+    static Date today() {
+        return Date(std::chrono::system_clock::now());
+    }
 
     Date addDays(int days) const {
         return Date(tp + std::chrono::hours(24 * days));
     }
 
-    void print() const {
-        std::time_t t = std::chrono::system_clock::to_time_t(tp);
-        std::cout << std::ctime(&t);
+    bool isBefore(const Date& other) const {
+        return tp < other.tp;
+    }
+
+    int daysUntil(const Date& other) const {
+        auto diff = other.tp - tp;
+        return static_cast<int>(
+            std::chrono::duration_cast<std::chrono::hours>(diff).count() / 24
+        );
+    }
+
+    std::string toString() const {
+        std::time_t time = std::chrono::system_clock::to_time_t(tp);
+        std::tm tm{};
+#if defined(_WIN32)
+        localtime_s(&tm, &time);
+#else
+        localtime_r(&time, &tm);
+#endif
+        std::ostringstream out;
+        out << std::put_time(&tm, "%Y-%m-%d");
+        return out.str();
     }
 
 private:
     std::chrono::system_clock::time_point tp;
-
-    Date(std::chrono::system_clock::time_point t) : tp(t) {}
 };
 
-// ============================================
-// USER AUTHENTICATION
-// ============================================
+enum class BookStatus {
+    AVAILABLE,
+    BORROWED,
+    RESERVED
+};
 
-class User {
-public:
-    User(std::string username, std::string password, Role role)
-        : username(username), password(password), role(role) {}
-
-    bool authenticate(const std::string& u, const std::string& p) const {
-        return u == username && p == password;
+static std::string bookStatusToString(BookStatus status) {
+    switch (status) {
+        case BookStatus::AVAILABLE:
+            return "AVAILABLE";
+        case BookStatus::BORROWED:
+            return "BORROWED";
+        case BookStatus::RESERVED:
+            return "RESERVED";
+        default:
+            return "UNKNOWN";
     }
-
-    Role getRole() const {
-        return role;
-    }
-
-    std::string getUsername() const {
-        return username;
-    }
-
-private:
-    std::string username;
-    std::string password;
-    Role role;
-};
-
-// ============================================
-// LIBRARY RULES
-// ============================================
-
-class LibraryRules {
-public:
-    int borrowLimit = 5;
-    int loanDays = 14;
-};
-
-// ============================================
-// LIBRARY COMPONENTS
-// ============================================
-
-struct Reservation {
-    std::string bookId;
-    std::string username;
-};
+}
 
 class Book {
 public:
-    Book(std::string id, std::string title)
-        : id(id), title(title), borrowed(false) {}
+    Book(std::string id, std::string title, std::string author)
+        : id(std::move(id)), title(std::move(title)),
+          author(std::move(author)), status(BookStatus::AVAILABLE) {}
 
-    bool borrow() {
-        if (borrowed)
-            return false;
+    const std::string& getId() const { return id; }
+    const std::string& getTitle() const { return title; }
+    const std::string& getAuthor() const { return author; }
+    BookStatus getStatus() const { return status; }
 
-        borrowed = true;
-        return true;
-    }
+    void setTitle(const std::string& newTitle) { title = newTitle; }
+    void setAuthor(const std::string& newAuthor) { author = newAuthor; }
+    void setStatus(BookStatus newStatus) { status = newStatus; }
 
-    void returnBook() {
-        borrowed = false;
-    }
+    bool isAvailable() const { return status == BookStatus::AVAILABLE; }
 
-    bool isBorrowed() const {
-        return borrowed;
-    }
-
-    std::string getId() const {
-        return id;
-    }
-
-    std::string getTitle() const {
-        return title;
+    std::string toString() const {
+        std::ostringstream out;
+        out << id << " | " << title << " | " << author << " | "
+            << bookStatusToString(status);
+        return out.str();
     }
 
 private:
     std::string id;
     std::string title;
-    bool borrowed;
+    std::string author;
+    BookStatus status;
+};
+
+enum class UserRole {
+    MEMBER,
+    LIBRARIAN,
+    ADMIN
+};
+
+class User;
+
+class NotificationChannel {
+public:
+    virtual ~NotificationChannel() = default;
+    virtual void send(const User& user, const std::string& message) = 0;
+};
+
+class User {
+public:
+    User(std::string id,
+         std::string name,
+         std::string username,
+         std::string password,
+         std::shared_ptr<NotificationChannel> notifier)
+        : id(std::move(id)),
+          name(std::move(name)),
+          username(std::move(username)),
+          password(std::move(password)),
+          notifier(std::move(notifier)) {}
+
+    virtual ~User() = default;
+
+    const std::string& getId() const { return id; }
+    const std::string& getName() const { return name; }
+    const std::string& getUsername() const { return username; }
+
+    bool matchesPassword(const std::string& input) const {
+        return password == input;
+    }
+
+    virtual UserRole getRole() const = 0;
+
+    void notify(const std::string& message) const {
+        if (notifier) {
+            notifier->send(*this, message);
+        }
+    }
+
+private:
+    std::string id;
+    std::string name;
+    std::string username;
+    std::string password;
+    std::shared_ptr<NotificationChannel> notifier;
+};
+
+class LibraryRules {
+public:
+    int getBorrowLimit() const { return borrowLimit; }
+    int getReservationExpiryDays() const { return reservationExpiryDays; }
+    int getLoanDays() const { return loanDays; }
+    double getLatePenaltyPerDay() const { return latePenaltyPerDay; }
+
+    void setBorrowLimit(int value) { borrowLimit = value; }
+    void setReservationExpiryDays(int value) { reservationExpiryDays = value; }
+    void setLoanDays(int value) { loanDays = value; }
+    void setLatePenaltyPerDay(double value) { latePenaltyPerDay = value; }
+
+private:
+    int borrowLimit = 5;
+    int reservationExpiryDays = 3;
+    int loanDays = 14;
+    double latePenaltyPerDay = 1.0;
+};
+
+class Member : public User {
+public:
+    Member(std::string id,
+           std::string name,
+           std::string username,
+           std::string password,
+           std::shared_ptr<NotificationChannel> notifier)
+        : User(std::move(id), std::move(name), std::move(username),
+               std::move(password), std::move(notifier)) {}
+
+    UserRole getRole() const override { return UserRole::MEMBER; }
+
+    int getBorrowLimit(const LibraryRules& rules) const {
+        return rules.getBorrowLimit();
+    }
+};
+
+class Librarian : public User {
+public:
+    Librarian(std::string id,
+              std::string name,
+              std::string username,
+              std::string password,
+              std::shared_ptr<NotificationChannel> notifier)
+        : User(std::move(id), std::move(name), std::move(username),
+               std::move(password), std::move(notifier)) {}
+
+    UserRole getRole() const override { return UserRole::LIBRARIAN; }
+};
+
+class Admin : public User {
+public:
+    Admin(std::string id,
+          std::string name,
+          std::string username,
+          std::string password,
+          std::shared_ptr<NotificationChannel> notifier)
+        : User(std::move(id), std::move(name), std::move(username),
+               std::move(password), std::move(notifier)) {}
+
+    UserRole getRole() const override { return UserRole::ADMIN; }
+};
+
+class ConsoleNotification : public NotificationChannel {
+public:
+    void send(const User& user, const std::string& message) override {
+        std::cout << "[Notify " << user.getUsername() << "] " << message << "\n";
+    }
+};
+
+struct Loan {
+    std::shared_ptr<Book> book;
+    std::shared_ptr<Member> member;
+    Date borrowedDate;
+    Date dueDate;
+    bool returned = false;
+};
+
+struct Reservation {
+    std::shared_ptr<Book> book;
+    std::shared_ptr<Member> member;
+    Date reservedDate;
 };
 
 class LibraryCatalog {
 public:
-    void addBook(const Book& book) {
-        books.push_back(book);
+    void addBook(const std::shared_ptr<Book>& book) {
+        books[book->getId()] = book;
     }
 
-    void listBooks() const {
-        for (const auto& b : books)
-            std::cout << b.getId() << " | " << b.getTitle() << "\n";
+    void updateBook(const std::shared_ptr<Book>& book) {
+        books[book->getId()] = book;
+    }
+
+    void removeBook(const std::string& bookId) {
+        books.erase(bookId);
+    }
+
+    std::shared_ptr<Book> findById(const std::string& bookId) const {
+        auto it = books.find(bookId);
+        return it == books.end() ? nullptr : it->second;
+    }
+
+    std::vector<std::shared_ptr<Book>> getAllBooks() const {
+        std::vector<std::shared_ptr<Book>> result;
+        for (const auto& pair : books) {
+            result.push_back(pair.second);
+        }
+        return result;
+    }
+
+    std::vector<std::shared_ptr<Book>> searchByTitle(const std::string& query) const {
+        std::vector<std::shared_ptr<Book>> results;
+        for (const auto& pair : books) {
+            if (toLower(pair.second->getTitle()).find(toLower(query)) != std::string::npos) {
+                results.push_back(pair.second);
+            }
+        }
+        return results;
+    }
+
+    std::vector<std::shared_ptr<Book>> searchByAuthor(const std::string& query) const {
+        std::vector<std::shared_ptr<Book>> results;
+        for (const auto& pair : books) {
+            if (toLower(pair.second->getAuthor()).find(toLower(query)) != std::string::npos) {
+                results.push_back(pair.second);
+            }
+        }
+        return results;
     }
 
 private:
-    std::vector<Book> books;
+    static std::string toLower(std::string value) {
+        std::transform(value.begin(), value.end(), value.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return value;
+    }
+
+    std::map<std::string, std::shared_ptr<Book>> books;
 };
 
-class ReservationManager {
+class AccountService {
 public:
-    void addReservation(const Reservation& reservation) {
-        reservations.push_back(reservation);
+    void addUser(const std::shared_ptr<User>& user) {
+        users[user->getUsername()] = user;
     }
 
-    void listReservations() const {
-        for (const auto& r : reservations)
-            std::cout << "Book: " << r.bookId << " | User: " << r.username << "\n";
+    void removeUser(const std::string& username) {
+        users.erase(username);
+    }
+
+    std::shared_ptr<User> authenticate(const std::string& username,
+                                       const std::string& password) const {
+        auto it = users.find(username);
+        if (it == users.end()) {
+            return nullptr;
+        }
+        return it->second->matchesPassword(password) ? it->second : nullptr;
+    }
+
+    const std::map<std::string, std::shared_ptr<User>>& getAllUsers() const {
+        return users;
     }
 
 private:
+    std::map<std::string, std::shared_ptr<User>> users;
+};
+
+class BorrowService {
+public:
+    BorrowService(std::shared_ptr<LibraryCatalog> catalog,
+                  std::shared_ptr<LibraryRules> rules)
+        : catalog(std::move(catalog)), rules(std::move(rules)) {}
+
+    std::string borrowBook(const std::shared_ptr<Member>& member,
+                           const std::string& bookId,
+                           const Date& today) {
+        auto book = catalog->findById(bookId);
+        if (!book) {
+            return "Book not found.";
+        }
+
+        expireReservations(today);
+
+        auto memberReservation = findReservation(book, member);
+        if (book->getStatus() == BookStatus::RESERVED && !memberReservation) {
+            return "Book is reserved by another member.";
+        }
+        if (book->getStatus() == BookStatus::BORROWED) {
+            return "Book is already borrowed.";
+        }
+
+        if (countActiveLoans(member) >= member->getBorrowLimit(*rules)) {
+            return "Borrow limit reached.";
+        }
+
+        Loan loan;
+        loan.book = book;
+        loan.member = member;
+        loan.borrowedDate = today;
+        loan.dueDate = today.addDays(rules->getLoanDays());
+        loans.push_back(loan);
+
+        book->setStatus(BookStatus::BORROWED);
+        if (memberReservation) {
+            removeReservation(memberReservation);
+        }
+
+        member->notify("Borrowed '" + book->getTitle() + "' due " + loan.dueDate.toString() + ".");
+        return "Borrowed successfully.";
+    }
+
+    std::string returnBook(const std::shared_ptr<Member>& member,
+                           const std::string& bookId,
+                           const Date& today) {
+        auto loan = findActiveLoan(bookId, member);
+        if (!loan) {
+            return "Loan not found.";
+        }
+
+        loan->returned = true;
+        auto book = loan->book;
+
+        auto nextReservation = findEarliestReservation(book);
+        if (nextReservation) {
+            book->setStatus(BookStatus::RESERVED);
+            nextReservation->member->notify(
+                "Reservation available for '" + book->getTitle() + "'."
+            );
+        } else {
+            book->setStatus(BookStatus::AVAILABLE);
+        }
+
+        return "Return successful.";
+    }
+
+    std::string reserveBook(const std::shared_ptr<Member>& member,
+                            const std::string& bookId,
+                            const Date& today) {
+        auto book = catalog->findById(bookId);
+        if (!book) {
+            return "Book not found.";
+        }
+
+        if (book->getStatus() == BookStatus::AVAILABLE) {
+            return "Book is available; please borrow.";
+        }
+        if (findReservation(book, member)) {
+            return "Already reserved.";
+        }
+
+        Reservation reservation;
+        reservation.book = book;
+        reservation.member = member;
+        reservation.reservedDate = today;
+        reservations.push_back(reservation);
+        book->setStatus(BookStatus::RESERVED);
+        member->notify("Reservation placed for '" + book->getTitle() + "'.");
+        return "Reservation successful.";
+    }
+
+    std::vector<Loan> getOverdueLoans(const Date& today) const {
+        std::vector<Loan> overdue;
+        for (const auto& loan : loans) {
+            if (!loan.returned && loan.dueDate.isBefore(today)) {
+                overdue.push_back(loan);
+            }
+        }
+        return overdue;
+    }
+
+    std::vector<Loan> getActiveLoansForMember(const std::shared_ptr<Member>& member) const {
+        std::vector<Loan> active;
+        for (const auto& loan : loans) {
+            if (!loan.returned && loan.member->getId() == member->getId()) {
+                active.push_back(loan);
+            }
+        }
+        return active;
+    }
+
+    std::vector<Reservation> getReservationsForMember(const std::shared_ptr<Member>& member) const {
+        std::vector<Reservation> result;
+        for (const auto& reservation : reservations) {
+            if (reservation.member->getId() == member->getId()) {
+                result.push_back(reservation);
+            }
+        }
+        return result;
+    }
+
+private:
+    int countActiveLoans(const std::shared_ptr<Member>& member) const {
+        int count = 0;
+        for (const auto& loan : loans) {
+            if (!loan.returned && loan.member->getId() == member->getId()) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    Loan* findActiveLoan(const std::string& bookId, const std::shared_ptr<Member>& member) {
+        for (auto& loan : loans) {
+            if (!loan.returned
+                && loan.member->getId() == member->getId()
+                && loan.book->getId() == bookId) {
+                return &loan;
+            }
+        }
+        return nullptr;
+    }
+
+    Reservation* findReservation(const std::shared_ptr<Book>& book,
+                                 const std::shared_ptr<Member>& member) {
+        for (auto& reservation : reservations) {
+            if (reservation.book->getId() == book->getId()
+                && reservation.member->getId() == member->getId()) {
+                return &reservation;
+            }
+        }
+        return nullptr;
+    }
+
+    Reservation* findEarliestReservation(const std::shared_ptr<Book>& book) {
+        Reservation* earliest = nullptr;
+        for (auto& reservation : reservations) {
+            if (reservation.book->getId() != book->getId()) {
+                continue;
+            }
+            if (!earliest || reservation.reservedDate.isBefore(earliest->reservedDate)) {
+                earliest = &reservation;
+            }
+        }
+        return earliest;
+    }
+
+    void removeReservation(Reservation* reservation) {
+        reservations.erase(std::remove_if(reservations.begin(), reservations.end(),
+                                          [&](const Reservation& r) {
+                                              return r.book->getId() == reservation->book->getId()
+                                                  && r.member->getId() == reservation->member->getId();
+                                          }),
+                           reservations.end());
+    }
+
+    void expireReservations(const Date& today) {
+        reservations.erase(std::remove_if(reservations.begin(), reservations.end(),
+                                          [&](const Reservation& r) {
+                                              return r.reservedDate
+                                                  .addDays(rules->getReservationExpiryDays())
+                                                  .isBefore(today);
+                                          }),
+                           reservations.end());
+    }
+
+    std::shared_ptr<LibraryCatalog> catalog;
+    std::shared_ptr<LibraryRules> rules;
+    std::vector<Loan> loans;
     std::vector<Reservation> reservations;
 };
 
-// ============================================
-// MAIN PROGRAM
-// ============================================
+class LibrarySystem {
+public:
+    LibrarySystem()
+        : rules(std::make_shared<LibraryRules>()),
+          catalog(std::make_shared<LibraryCatalog>()),
+          accounts(std::make_shared<AccountService>()),
+          borrowService(std::make_shared<BorrowService>(catalog, rules)) {
+        seedData();
+    }
 
-int main() {
+    std::shared_ptr<LibraryRules> getRules() const { return rules; }
+    std::shared_ptr<LibraryCatalog> getCatalog() const { return catalog; }
+    std::shared_ptr<AccountService> getAccounts() const { return accounts; }
+    std::shared_ptr<BorrowService> getBorrowService() const { return borrowService; }
 
-    std::cout << "=== Smart Library Management System ===\n\n";
+private:
+    void seedData() {
+        auto notifier = std::make_shared<ConsoleNotification>();
 
-    // ============================================
-    // USER LIST
-    // ============================================
+        catalog->addBook(std::make_shared<Book>("B001", "Clean Code", "Robert C. Martin"));
+        catalog->addBook(std::make_shared<Book>("B002", "Effective Java", "Joshua Bloch"));
+        catalog->addBook(std::make_shared<Book>("B003", "Design Patterns", "GoF"));
 
-    std::vector<User> users = {
-        User("admin", "admin123", Role::LIBRARIAN),
-        User("librarian", "lib123", Role::LIBRARIAN),
-        User("member", "mem123", Role::MEMBER)
-    };
+        accounts->addUser(std::make_shared<Member>("M001", "Alice Member", "alice", "pass1", notifier));
+        accounts->addUser(std::make_shared<Member>("M002", "Bob Member", "bob", "pass2", notifier));
+        accounts->addUser(std::make_shared<Librarian>("L001", "Lina Librarian", "lina", "lib1", notifier));
+        accounts->addUser(std::make_shared<Admin>("A001", "Adam Admin", "adam", "admin1", notifier));
 
-    // ============================================
-    // LOGIN
-    // ============================================
-
-    std::string username, password;
-
-    std::cout << "--- User Authentication ---\n";
-
-    std::cout << "Username: ";
-    std::getline(std::cin, username);
-
-    std::cout << "Password: ";
-    std::getline(std::cin, password);
-
-    User* loggedUser = nullptr;
-
-    for (auto& user : users) {
-        if (user.authenticate(username, password)) {
-            loggedUser = &user;
-            break;
+        auto alice = std::dynamic_pointer_cast<Member>(
+            accounts->authenticate("alice", "pass1"));
+        if (alice) {
+            borrowService->borrowBook(alice, "B001", Date::today().addDays(-20));
         }
     }
 
-    if (!loggedUser) {
-        std::cout << "Invalid credentials.\n";
-        return 1;
+    std::shared_ptr<LibraryRules> rules;
+    std::shared_ptr<LibraryCatalog> catalog;
+    std::shared_ptr<AccountService> accounts;
+    std::shared_ptr<BorrowService> borrowService;
+};
+
+static std::string readLine(const std::string& prompt) {
+    std::cout << prompt;
+    std::string input;
+    std::getline(std::cin, input);
+    return input;
+}
+
+static int readInt(const std::string& prompt) {
+    while (true) {
+        std::string input = readLine(prompt);
+        try {
+            return std::stoi(input);
+        } catch (...) {
+            std::cout << "Please enter a number.\n";
+        }
     }
+}
 
-    std::cout << "Login successful. Welcome " << loggedUser->getUsername() << "\n\n";
-
-    // ============================================
-    // USER ROLE MENU
-    // ============================================
-
-    std::cout << "--- User Role ---\n";
-
-    if (loggedUser->getRole() == Role::LIBRARIAN) {
-
-        std::cout << "Librarian/Admin Menu\n";
-        std::cout << "1. Add Book\n";
-        std::cout << "2. View Reservations\n";
-        std::cout << "3. Manage Catalog\n";
-
+static double readDouble(const std::string& prompt) {
+    while (true) {
+        std::string input = readLine(prompt);
+        try {
+            return std::stod(input);
+        } catch (...) {
+            std::cout << "Please enter a decimal number.\n";
+        }
     }
-    else {
+}
 
-        std::cout << "Member Menu\n";
-        std::cout << "1. Borrow Book\n";
-        std::cout << "2. Reserve Book\n";
-        std::cout << "3. View Borrowed Books\n";
-
+static void searchByTitle(const std::shared_ptr<LibrarySystem>& system) {
+    std::string query = readLine("Title search: ");
+    auto results = system->getCatalog()->searchByTitle(query);
+    if (results.empty()) {
+        std::cout << "No matches.\n";
+        return;
     }
+    for (const auto& book : results) {
+        std::cout << book->toString() << "\n";
+    }
+}
 
-    std::cout << "\n";
+static void searchByAuthor(const std::shared_ptr<LibrarySystem>& system) {
+    std::string query = readLine("Author search: ");
+    auto results = system->getCatalog()->searchByAuthor(query);
+    if (results.empty()) {
+        std::cout << "No matches.\n";
+        return;
+    }
+    for (const auto& book : results) {
+        std::cout << book->toString() << "\n";
+    }
+}
 
-    // ============================================
-    // BOOK BORROWING DEMO
-    // ============================================
+static void memberMenu(const std::shared_ptr<LibrarySystem>& system,
+                       const std::shared_ptr<Member>& member) {
+    while (true) {
+        std::cout << "\nMember Menu\n";
+        std::cout << "1. Search by title\n";
+        std::cout << "2. Search by author\n";
+        std::cout << "3. Borrow book\n";
+        std::cout << "4. Return book\n";
+        std::cout << "5. Reserve book\n";
+        std::cout << "6. View my loans\n";
+        std::cout << "7. View my reservations\n";
+        std::cout << "0. Logout\n";
+        int choice = readInt("Choice: ");
 
-    std::cout << "--- Book Borrowing ---\n";
+        switch (choice) {
+            case 1:
+                searchByTitle(system);
+                break;
+            case 2:
+                searchByAuthor(system);
+                break;
+            case 3: {
+                std::string bookId = readLine("Book ID to borrow: ");
+                std::string result = system->getBorrowService()
+                    ->borrowBook(member, bookId, Date::today());
+                std::cout << result << "\n";
+                break;
+            }
+            case 4: {
+                std::string bookId = readLine("Book ID to return: ");
+                std::string result = system->getBorrowService()
+                    ->returnBook(member, bookId, Date::today());
+                std::cout << result << "\n";
+                break;
+            }
+            case 5: {
+                std::string bookId = readLine("Book ID to reserve: ");
+                std::string result = system->getBorrowService()
+                    ->reserveBook(member, bookId, Date::today());
+                std::cout << result << "\n";
+                break;
+            }
+            case 6: {
+                auto loans = system->getBorrowService()->getActiveLoansForMember(member);
+                if (loans.empty()) {
+                    std::cout << "No active loans.\n";
+                } else {
+                    for (const auto& loan : loans) {
+                        std::cout << loan.book->getId() << " | " << loan.book->getTitle()
+                                  << " | due " << loan.dueDate.toString() << "\n";
+                    }
+                }
+                break;
+            }
+            case 7: {
+                auto reservations = system->getBorrowService()->getReservationsForMember(member);
+                if (reservations.empty()) {
+                    std::cout << "No reservations.\n";
+                } else {
+                    for (const auto& reservation : reservations) {
+                        std::cout << reservation.book->getId() << " | "
+                                  << reservation.book->getTitle() << " | reserved "
+                                  << reservation.reservedDate.toString() << "\n";
+                    }
+                }
+                break;
+            }
+            case 0:
+                return;
+            default:
+                std::cout << "Invalid choice.\n";
+        }
+    }
+}
 
-    Book book("B001", "Clean Code");
+static void librarianMenu(const std::shared_ptr<LibrarySystem>& system) {
+    while (true) {
+        std::cout << "\nLibrarian Menu\n";
+        std::cout << "1. Add book\n";
+        std::cout << "2. Update book\n";
+        std::cout << "3. Remove book\n";
+        std::cout << "4. List overdue loans\n";
+        std::cout << "5. List all books\n";
+        std::cout << "0. Logout\n";
+        int choice = readInt("Choice: ");
 
-    if (book.borrow()) {
-        std::cout << "Book '" << book.getTitle() << "' borrowed successfully.\n";
+        switch (choice) {
+            case 1: {
+                std::string id = readLine("Book ID: ");
+                std::string title = readLine("Title: ");
+                std::string author = readLine("Author: ");
+                system->getCatalog()->addBook(std::make_shared<Book>(id, title, author));
+                std::cout << "Book added.\n";
+                break;
+            }
+            case 2: {
+                std::string id = readLine("Book ID to update: ");
+                auto book = system->getCatalog()->findById(id);
+                if (!book) {
+                    std::cout << "Book not found.\n";
+                    break;
+                }
+                std::string title = readLine("New title: ");
+                std::string author = readLine("New author: ");
+                book->setTitle(title);
+                book->setAuthor(author);
+                system->getCatalog()->updateBook(book);
+                std::cout << "Book updated.\n";
+                break;
+            }
+            case 3: {
+                std::string id = readLine("Book ID to remove: ");
+                system->getCatalog()->removeBook(id);
+                std::cout << "Book removed.\n";
+                break;
+            }
+            case 4: {
+                auto overdue = system->getBorrowService()->getOverdueLoans(Date::today());
+                if (overdue.empty()) {
+                    std::cout << "No overdue loans.\n";
+                } else {
+                    for (const auto& loan : overdue) {
+                        std::cout << loan.book->getId() << " | " << loan.book->getTitle()
+                                  << " | member " << loan.member->getUsername()
+                                  << " | due " << loan.dueDate.toString() << "\n";
+                    }
+                }
+                break;
+            }
+            case 5: {
+                auto books = system->getCatalog()->getAllBooks();
+                for (const auto& book : books) {
+                    std::cout << book->toString() << "\n";
+                }
+                break;
+            }
+            case 0:
+                return;
+            default:
+                std::cout << "Invalid choice.\n";
+        }
+    }
+}
+
+static void addUser(const std::shared_ptr<LibrarySystem>& system) {
+    std::string role = readLine("Role (member/librarian/admin): ");
+    std::string id = readLine("User ID: ");
+    std::string name = readLine("Name: ");
+    std::string username = readLine("Username: ");
+    std::string password = readLine("Password: ");
+    auto notifier = std::make_shared<ConsoleNotification>();
+
+    if (role == "member") {
+        system->getAccounts()->addUser(
+            std::make_shared<Member>(id, name, username, password, notifier));
+    } else if (role == "librarian") {
+        system->getAccounts()->addUser(
+            std::make_shared<Librarian>(id, name, username, password, notifier));
+    } else if (role == "admin") {
+        system->getAccounts()->addUser(
+            std::make_shared<Admin>(id, name, username, password, notifier));
     } else {
-        std::cout << "Book already borrowed.\n";
+        std::cout << "Unknown role.\n";
+        return;
+    }
+    std::cout << "User added.\n";
+}
+
+static void updateRules(const std::shared_ptr<LibrarySystem>& system) {
+    auto rules = system->getRules();
+    int borrowLimit = readInt("Borrow limit: ");
+    int reservationDays = readInt("Reservation expiry (days): ");
+    int loanDays = readInt("Loan period (days): ");
+    double latePenalty = readDouble("Late penalty per day: ");
+
+    rules->setBorrowLimit(borrowLimit);
+    rules->setReservationExpiryDays(reservationDays);
+    rules->setLoanDays(loanDays);
+    rules->setLatePenaltyPerDay(latePenalty);
+    std::cout << "Rules updated.\n";
+}
+
+static void adminMenu(const std::shared_ptr<LibrarySystem>& system) {
+    while (true) {
+        std::cout << "\nAdmin Menu\n";
+        std::cout << "1. Add user\n";
+        std::cout << "2. Remove user\n";
+        std::cout << "3. Update rules\n";
+        std::cout << "4. List users\n";
+        std::cout << "0. Logout\n";
+        int choice = readInt("Choice: ");
+
+        switch (choice) {
+            case 1:
+                addUser(system);
+                break;
+            case 2: {
+                std::string username = readLine("Username to remove: ");
+                system->getAccounts()->removeUser(username);
+                std::cout << "User removed.\n";
+                break;
+            }
+            case 3:
+                updateRules(system);
+                break;
+            case 4: {
+                const auto& users = system->getAccounts()->getAllUsers();
+                for (const auto& entry : users) {
+                    std::cout << entry.first << " | ";
+                    switch (entry.second->getRole()) {
+                        case UserRole::MEMBER:
+                            std::cout << "MEMBER";
+                            break;
+                        case UserRole::LIBRARIAN:
+                            std::cout << "LIBRARIAN";
+                            break;
+                        case UserRole::ADMIN:
+                            std::cout << "ADMIN";
+                            break;
+                    }
+                    std::cout << "\n";
+                }
+                break;
+            }
+            case 0:
+                return;
+            default:
+                std::cout << "Invalid choice.\n";
+        }
+    }
+}
+
+int main() {
+    auto system = std::make_shared<LibrarySystem>();
+
+    std::cout << "Smart Library Management System (SLMS)\n";
+    while (true) {
+        std::string username = readLine("\nUsername (or 'exit'): ");
+        if (username == "exit") {
+            break;
+        }
+        std::string password = readLine("Password: ");
+
+        auto user = system->getAccounts()->authenticate(username, password);
+        if (!user) {
+            std::cout << "Invalid credentials.\n";
+            continue;
+        }
+
+        if (user->getRole() == UserRole::MEMBER) {
+            memberMenu(system, std::dynamic_pointer_cast<Member>(user));
+        } else if (user->getRole() == UserRole::LIBRARIAN) {
+            librarianMenu(system);
+        } else if (user->getRole() == UserRole::ADMIN) {
+            adminMenu(system);
+        }
     }
 
-    std::cout << "\n";
-
-    // ============================================
-    // LOAN DATE DEMO
-    // ============================================
-
-    std::cout << "--- Loan Date ---\n";
-
-    Date today;
-    Date due = today.addDays(14);
-
-    std::cout << "Due date: ";
-    due.print();
-
-    std::cout << "\n";
-
-    // ============================================
-    // RESERVATION DEMO
-    // ============================================
-
-    std::cout << "--- Book Reservations ---\n";
-
-    ReservationManager reservationMgr;
-
-    reservationMgr.addReservation({"B001", "alice"});
-    reservationMgr.addReservation({"B002", "bob"});
-
-    std::cout << "Active Reservations:\n";
-
-    reservationMgr.listReservations();
-
-    std::cout << "\n";
-
-    // ============================================
-    // LIBRARY RULES
-    // ============================================
-
-    std::cout << "--- Library Rules ---\n";
-
-    LibraryRules rules;
-
-    std::cout << "Borrow limit: " << rules.borrowLimit << "\n";
-    std::cout << "Loan days: " << rules.loanDays << "\n";
-
+    std::cout << "Goodbye.\n";
     return 0;
 }
+
